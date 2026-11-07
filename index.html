@@ -160,7 +160,7 @@ const LOGO_IMAGEN        = '';
 /* ---------- configuración recibida por el enlace ---------- */
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 const P=new URLSearchParams(location.search);
-['c','l','v','r','n'].forEach(k=>{if(P.get(k)!==null)LS.set('omp_'+k,P.get(k))});
+['c','l','v','r','n','b'].forEach(k=>{if(P.get(k)!==null)LS.set('omp_'+k,P.get(k))});
 if([...P.keys()].length){history.replaceState(null,'',location.pathname+location.hash)}
 const CODE=LS.get('omp_c');
 const LANG=(LS.get('omp_l')||'es').replace(/[^a-z-]/gi,'')||'es';
@@ -173,6 +173,10 @@ const CLEAN=s=>String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().r
 let paired=!!CODE;      // con código en el enlace, ya viene emparejado
 let curTopic=TOPIC;     // tema activo (puede cambiar al emparejar por palabra)
 let pairES=null;
+/* Modo libro (book test): una vez emparejado, cada artículo se reduce a solo 8
+   palabras distintas de más de 6 letras, repartidas y repetidas por todo el texto. */
+let bookMode=LS.get('omp_b')==='1';
+let bookWords=[];
 const API='https://'+LANG+'.wikipedia.org/w/api.php';
 const NOMBRE=(LS.get('omp_n')||NOMBRE_POR_DEFECTO).slice(0,40);
 const LEMA=LEMA_POR_DEFECTO;
@@ -239,6 +243,7 @@ function listen(){
       if(m.t!=='cmd')return;
       if(m.cmd==='home'){qEl.value='';closeSearch();closeMenu();if(location.hash)location.hash='';else route();}
       if(m.cmd==='open'&&m.q){go(m.q,null)}
+      if(m.cmd==='book'){bookMode=!!m.on;LS.set('omp_b',bookMode?'1':'');route();}
     };
     es.onerror=function(){es.close();setTimeout(open,4000)};
   }
@@ -314,7 +319,10 @@ function renderArticle(title){
     while(box.firstChild)c.appendChild(box.firstChild);
     view.appendChild(c);
     document.title=real+' - '+TITULO;
+    let bw=null;
+    if(bookMode&&paired){ bw=applyBook(c); bookWords=bw; }
     if(pending){send('article',real,pending);pending=null}
+    if(bw&&bw.length){ send('book',real,{words:bw}); }
   }).catch(function(){
     if(my!==reqId)return;
     view.innerHTML='<div class="miss"><h1>'+esc(title)+'</h1><p>No se ha podido cargar el artículo. Comprueba tu conexión e inténtalo de nuevo.</p></div>';
@@ -352,6 +360,32 @@ view.addEventListener('click',function(e){
   e.preventDefault();
   go(a.dataset.wt,'enlace');
 });
+/* ---------- modo libro: deja solo 8 palabras largas distintas, repartidas y repetidas ---------- */
+const WORD_RE=/[A-Za-zÀ-ÖØ-öø-ÿÑñ]+/g;
+function applyBook(root){
+  const LONG=7;                         // más de 6 letras
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null);
+  const nodes=[]; let tn;
+  while(tn=walker.nextNode()){ if(tn.nodeValue&&/[A-Za-zÀ-ÿÑñ]/.test(tn.nodeValue))nodes.push(tn); }
+  // 1) palabras largas distintas por orden de aparición
+  const seen=new Set(),distinct=[];
+  nodes.forEach(n=>{(n.nodeValue.match(WORD_RE)||[]).forEach(w=>{if(w.length>=LONG){const k=w.toLowerCase();if(!seen.has(k)){seen.add(k);distinct.push(w.toLowerCase());}}});});
+  if(!distinct.length)return [];
+  // 2) elegir 8 repartidas (índices equiespaciados) y completar si hace falta
+  let pick=[];const ps=new Set();
+  const want=Math.min(8,distinct.length);
+  for(let i=0;i<want;i++){const w=distinct[distinct.length<=8?i:Math.round(i*(distinct.length-1)/(want-1||1))];if(!ps.has(w)){ps.add(w);pick.push(w);}}
+  for(const w of distinct){if(pick.length>=8)break;if(!ps.has(w)){ps.add(w);pick.push(w);}}
+  // 3) reemplazar TODA palabra larga por una de las 8, en ciclo (repartidas y repetidas)
+  let i=0;
+  nodes.forEach(n=>{ n.nodeValue=n.nodeValue.replace(WORD_RE,function(w){
+    if(w.length<LONG)return w;
+    const r=pick[i++%pick.length];
+    return (w[0]===w[0].toUpperCase())?(r[0].toUpperCase()+r.slice(1)):r;
+  }); });
+  // lista para el mago, con inicial mayúscula
+  return pick.map(w=>w[0].toUpperCase()+w.slice(1));
+}
 function renderMissing(title,my){
   view.innerHTML='<div class="miss"><h1>'+esc(title)+'</h1><p>No existe ninguna página con el título «'+esc(title)+'» en '+esc(NOMBRE)+'. Quizás te interese alguno de estos artículos:</p><ul id="alts"><li class="sn">Buscando…</li></ul></div>';
   if(pending){send('article',title,Object.assign({},pending,{missing:1}));pending=null}
