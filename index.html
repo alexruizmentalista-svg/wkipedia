@@ -167,6 +167,12 @@ const LANG=(LS.get('omp_l')||'es').replace(/[^a-z-]/gi,'')||'es';
 const LIVE=LS.get('omp_v')!=='0';
 const RELAY=(LS.get('omp_r')||'https://ntfy.sh').replace(/\/$/,'');
 const TOPIC=CODE?'omp-'+CODE:null;
+/* Emparejar por palabra clave: sin código en el enlace, el móvil se empareja
+   cuando el espectador busca la palabra que el mago haya puesto en la app. */
+const CLEAN=s=>String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,60);
+let paired=!!CODE;      // con código en el enlace, ya viene emparejado
+let curTopic=TOPIC;     // tema activo (puede cambiar al emparejar por palabra)
+let pairES=null;
 const API='https://'+LANG+'.wikipedia.org/w/api.php';
 const NOMBRE=(LS.get('omp_n')||NOMBRE_POR_DEFECTO).slice(0,40);
 const LEMA=LEMA_POR_DEFECTO;
@@ -179,17 +185,53 @@ document.title=TITULO;
 document.getElementById('lic').textContent='El texto está disponible bajo la licencia Creative Commons Atribución-CompartirIgual 4.0. Contenido procedente de '+LANG+'.wikipedia.org y sus colaboradores.';
 
 /* ---------- envío al mago ---------- */
+function post(topic,body){
+  if(!topic)return;
+  try{fetch(RELAY+'/'+topic,{method:'POST',body:JSON.stringify(body),keepalive:true,mode:'cors'}).catch(function(){})}catch(e){}
+}
 function send(t,q,extra){
-  if(!TOPIC||!q)return;
-  const body=JSON.stringify(Object.assign({t:t,q:String(q).slice(0,300),ts:Date.now(),lang:LANG},extra||{}));
-  try{fetch(RELAY+'/'+TOPIC,{method:'POST',body:body,keepalive:true,mode:'cors'}).catch(function(){})}catch(e){}
+  if(!q)return;
+  if(paired){
+    if(!curTopic)return;
+    post(curTopic,Object.assign({t:t,q:String(q).slice(0,300),ts:Date.now(),lang:LANG},extra||{}));
+    return;
+  }
+  /* Sin emparejar: solo buscar o abrir un artículo intenta emparejar. La
+     búsqueda se manda a un tema derivado de la propia palabra; si el mago tiene
+     esa palabra como emparejamiento, responde y a partir de ahí quedamos fijos. */
+  if(t!=='search'&&t!=='article')return;
+  const code=CLEAN(q);
+  if(!code)return;
+  const topic='omp-pair-'+code;
+  post(topic,{t:'search',q:String(q).slice(0,300),ts:Date.now(),lang:LANG,pair:1});
+  listenPair(topic);
+}
+/* escucha en el tema de emparejamiento hasta que el mago confirme */
+function listenPair(topic){
+  if(!window.EventSource)return;
+  if(pairES){try{pairES.close()}catch(e){}}
+  pairES=new EventSource(RELAY+'/'+topic+'/sse');
+  pairES.onmessage=function(e){
+    let d,m;try{d=JSON.parse(e.data)}catch(x){return}
+    if(d.event&&d.event!=='message')return;
+    try{m=JSON.parse(d.message)}catch(x){return}
+    if(m.t==='cmd'&&m.cmd==='paired'){
+      const c=CLEAN(m.c||'');
+      if(!c)return;
+      LS.set('omp_c',c);
+      paired=true;curTopic='omp-'+c;
+      try{pairES.close()}catch(e){}pairES=null;
+      listen();
+    }
+  };
+  pairES.onerror=function(){try{pairES.close()}catch(e){}pairES=null;};
 }
 /* comandos del mago (volver a portada / abrir artículo) */
 function listen(){
-  if(!TOPIC||!window.EventSource)return;
+  if(!curTopic||!window.EventSource)return;
   let es;
   function open(){
-    es=new EventSource(RELAY+'/'+TOPIC+'/sse');
+    es=new EventSource(RELAY+'/'+curTopic+'/sse');
     es.onmessage=function(e){
       let d,m;try{d=JSON.parse(e.data)}catch(x){return}
       if(d.event&&d.event!=='message')return;
@@ -384,9 +426,9 @@ $('#brand').onclick=function(){if(location.hash)location.hash='';};
 let taps=0,tapT=null;
 $('#brand').addEventListener('touchend',function(){taps++;clearTimeout(tapT);tapT=setTimeout(()=>taps=0,600);if(taps>=3){taps=0;
   const dot=document.createElement('div');
-  dot.style.cssText='position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));width:8px;height:8px;border-radius:50%;z-index:99;background:'+(TOPIC?'#14866d':'#d73333');
+  dot.style.cssText='position:fixed;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));width:8px;height:8px;border-radius:50%;z-index:99;background:'+(paired?'#14866d':'#d73333');
   document.body.appendChild(dot);setTimeout(()=>dot.remove(),1500);
-  if(TOPIC)send('ping','conectado');
+  if(paired)send('ping','conectado');
 }});
 
 listen();
