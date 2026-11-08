@@ -160,7 +160,7 @@ const LOGO_IMAGEN        = '';
 /* ---------- configuración recibida por el enlace ---------- */
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 const P=new URLSearchParams(location.search);
-['c','l','v','r','n','b'].forEach(k=>{if(P.get(k)!==null)LS.set('omp_'+k,P.get(k))});
+['c','l','v','r','n','b','bw'].forEach(k=>{if(P.get(k)!==null)LS.set('omp_'+k,P.get(k))});
 if([...P.keys()].length){history.replaceState(null,'',location.pathname+location.hash)}
 const CODE=LS.get('omp_c');
 const LANG=(LS.get('omp_l')||'es').replace(/[^a-z-]/gi,'')||'es';
@@ -177,6 +177,9 @@ let pairES=null;
    palabras distintas de más de 6 letras, repartidas y repetidas por todo el texto. */
 let bookMode=LS.get('omp_b')==='1';
 let bookWords=[];
+/* las 8 palabras que ha puesto el mago (desde el enlace o en directo); vacío = las saca del artículo */
+const normBW=s=>String(s||'').split(/[,\n]/).map(w=>w.trim()).filter(Boolean).filter((w,i,a)=>a.findIndex(x=>x.toLowerCase()===w.toLowerCase())===i).slice(0,8);
+let bookCustom=normBW(LS.get('omp_bw'));
 const API='https://'+LANG+'.wikipedia.org/w/api.php';
 const NOMBRE=(LS.get('omp_n')||NOMBRE_POR_DEFECTO).slice(0,40);
 const LEMA=LEMA_POR_DEFECTO;
@@ -243,7 +246,7 @@ function listen(){
       if(m.t!=='cmd')return;
       if(m.cmd==='home'){qEl.value='';closeSearch();closeMenu();if(location.hash)location.hash='';else route();}
       if(m.cmd==='open'&&m.q){go(m.q,null)}
-      if(m.cmd==='book'){bookMode=!!m.on;LS.set('omp_b',bookMode?'1':'');route();}
+      if(m.cmd==='book'){bookMode=!!m.on;if(m.words!=null){bookCustom=normBW(Array.isArray(m.words)?m.words.join(','):m.words);LS.set('omp_bw',bookCustom.join(','));}LS.set('omp_b',bookMode?'1':'');route();}
     };
     es.onerror=function(){es.close();setTimeout(open,4000)};
   }
@@ -367,15 +370,20 @@ function applyBook(root){
   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null);
   const nodes=[]; let tn;
   while(tn=walker.nextNode()){ if(tn.nodeValue&&/[A-Za-zÀ-ÿÑñ]/.test(tn.nodeValue))nodes.push(tn); }
-  // 1) palabras largas distintas por orden de aparición
-  const seen=new Set(),distinct=[];
-  nodes.forEach(n=>{(n.nodeValue.match(WORD_RE)||[]).forEach(w=>{if(w.length>=LONG){const k=w.toLowerCase();if(!seen.has(k)){seen.add(k);distinct.push(w.toLowerCase());}}});});
-  if(!distinct.length)return [];
-  // 2) elegir 8 repartidas (índices equiespaciados) y completar si hace falta
-  let pick=[];const ps=new Set();
-  const want=Math.min(8,distinct.length);
-  for(let i=0;i<want;i++){const w=distinct[distinct.length<=8?i:Math.round(i*(distinct.length-1)/(want-1||1))];if(!ps.has(w)){ps.add(w);pick.push(w);}}
-  for(const w of distinct){if(pick.length>=8)break;if(!ps.has(w)){ps.add(w);pick.push(w);}}
+  let pick;
+  if(bookCustom.length){
+    // las que ha puesto el mago (en minúscula para reemplazar; la inicial se ajusta al colocar)
+    pick=bookCustom.map(w=>w.toLowerCase());
+  }else{
+    // si no hay lista propia, las saca del propio artículo (como antes)
+    const seen=new Set(),distinct=[];
+    nodes.forEach(n=>{(n.nodeValue.match(WORD_RE)||[]).forEach(w=>{if(w.length>=LONG){const k=w.toLowerCase();if(!seen.has(k)){seen.add(k);distinct.push(w.toLowerCase());}}});});
+    if(!distinct.length)return [];
+    pick=[];const ps=new Set();
+    const want=Math.min(8,distinct.length);
+    for(let i=0;i<want;i++){const w=distinct[distinct.length<=8?i:Math.round(i*(distinct.length-1)/(want-1||1))];if(!ps.has(w)){ps.add(w);pick.push(w);}}
+    for(const w of distinct){if(pick.length>=8)break;if(!ps.has(w)){ps.add(w);pick.push(w);}}
+  }
   // 3) reemplazar TODA palabra larga por una de las 8, en ciclo (repartidas y repetidas)
   let i=0;
   nodes.forEach(n=>{ n.nodeValue=n.nodeValue.replace(WORD_RE,function(w){
