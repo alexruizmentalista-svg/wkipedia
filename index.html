@@ -230,8 +230,16 @@ function listenPair(topic){
       if(!c)return;
       LS.set('omp_c',c);
       paired=true;curTopic='omp-'+c;
+      // El mago manda su estado del modo libro en la propia confirmación, para que
+      // también funcione con el enlace corto glj.es (que no lleva esos parámetros).
+      if(m.b!=null){bookMode=!!m.b;LS.set('omp_b',bookMode?'1':'');}
+      if(m.bw!=null){bookCustom=normBW(Array.isArray(m.bw)?m.bw.join(','):m.bw);LS.set('omp_bw',bookCustom.join(','));}
       try{pairES.close()}catch(e){}pairES=null;
       listen();
+      // Ya emparejados: vuelve a pintar el artículo que está abierto para que, si
+      // el modo libro está activo, se reduzca a las 8 palabras (al abrirlo aún no
+      // estábamos emparejados, así que salía entero). También avisa al mago.
+      if(bookMode)route();
     }
   };
   pairES.onerror=function(){try{pairES.close()}catch(e){}pairES=null;};
