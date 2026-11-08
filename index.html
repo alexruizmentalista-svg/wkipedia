@@ -173,6 +173,9 @@ const CLEAN=s=>String(s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().r
 let paired=!!CODE;      // con código en el enlace, ya viene emparejado
 let curTopic=TOPIC;     // tema activo (puede cambiar al emparejar por palabra)
 let pairES=null;
+/* Enlace corto glj.es/<codigo>: llega con ?p=<codigo> y empareja directo al abrir,
+   sin tener que buscar nada. No se guarda: es un disparador de una sola vez. */
+const AUTOPAIR=CLEAN(P.get('p')||'');
 /* Modo libro (book test): una vez emparejado, cada artículo se reduce a solo 8
    palabras distintas de más de 6 letras, repartidas y repetidas por todo el texto. */
 let bookMode=LS.get('omp_b')==='1';
@@ -475,6 +478,12 @@ $('#brand').addEventListener('touchend',function(){taps++;clearTimeout(tapT);tap
 
 listen();
 route();
+/* glj.es/<codigo>: empareja directo al abrir (sin buscar) */
+if(AUTOPAIR&&!paired){
+  const tp='omp-pair-'+AUTOPAIR;
+  post(tp,{t:'ping',q:'conectado',ts:Date.now(),lang:LANG,pair:1});
+  listenPair(tp);
+}
 })();
 </script>
 </body>
