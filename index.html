@@ -159,10 +159,16 @@ const LOGO_IMAGEN        = '';
 
 /* ---------- configuración recibida por el enlace ---------- */
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+/* La CONEXIÓN (código y modo libro) se guarda solo mientras la pestaña esté abierta
+   (sessionStorage): sobrevive a recargar, pero NO a cerrar y entrar a wkipedia.es a
+   pelo. Así, sin entrar por el enlace/QR/emparejamiento, el móvil no queda conectado. */
+const SS={get(k){try{return sessionStorage.getItem(k)}catch(e){return null}},set(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}};
+['c','b','bw'].forEach(k=>{try{localStorage.removeItem('omp_'+k)}catch(e){}});   // limpia conexiones viejas que quedaran guardadas para siempre
 const P=new URLSearchParams(location.search);
-['c','l','v','r','n','b','bw'].forEach(k=>{if(P.get(k)!==null)LS.set('omp_'+k,P.get(k))});
+['l','v','r','n'].forEach(k=>{if(P.get(k)!==null)LS.set('omp_'+k,P.get(k))});   // preferencias (idioma, nombre…): se quedan
+['c','b','bw'].forEach(k=>{if(P.get(k)!==null)SS.set('omp_'+k,P.get(k))});       // conexión: solo esta sesión
 if([...P.keys()].length){history.replaceState(null,'',location.pathname+location.hash)}
-const CODE=LS.get('omp_c');
+const CODE=SS.get('omp_c');
 const LANG=(LS.get('omp_l')||'es').replace(/[^a-z-]/gi,'')||'es';
 const LIVE=LS.get('omp_v')!=='0';
 const RELAY=(LS.get('omp_r')||'https://ntfy.sh').replace(/\/$/,'');
@@ -178,11 +184,11 @@ let pairES=null;
 const AUTOPAIR=CLEAN(P.get('p')||'');
 /* Modo libro (book test): una vez emparejado, cada artículo se reduce a solo 8
    palabras distintas de más de 6 letras, repartidas y repetidas por todo el texto. */
-let bookMode=LS.get('omp_b')==='1';
+let bookMode=SS.get('omp_b')==='1';
 let bookWords=[];
 /* las 8 palabras que ha puesto el mago (desde el enlace o en directo); vacío = las saca del artículo */
 const normBW=s=>String(s||'').split(/[,\n]/).map(w=>w.trim()).filter(Boolean).filter((w,i,a)=>a.findIndex(x=>x.toLowerCase()===w.toLowerCase())===i).slice(0,8);
-let bookCustom=normBW(LS.get('omp_bw'));
+let bookCustom=normBW(SS.get('omp_bw'));
 const API='https://'+LANG+'.wikipedia.org/w/api.php';
 const NOMBRE=(LS.get('omp_n')||NOMBRE_POR_DEFECTO).slice(0,40);
 const LEMA=LEMA_POR_DEFECTO;
@@ -228,12 +234,12 @@ function listenPair(topic){
     if(m.t==='cmd'&&m.cmd==='paired'){
       const c=CLEAN(m.c||'');
       if(!c)return;
-      LS.set('omp_c',c);
+      SS.set('omp_c',c);
       paired=true;curTopic='omp-'+c;
       // El mago manda su estado del modo libro en la propia confirmación, para que
       // también funcione con el enlace corto glj.es (que no lleva esos parámetros).
-      if(m.b!=null){bookMode=!!m.b;LS.set('omp_b',bookMode?'1':'');}
-      if(m.bw!=null){bookCustom=normBW(Array.isArray(m.bw)?m.bw.join(','):m.bw);LS.set('omp_bw',bookCustom.join(','));}
+      if(m.b!=null){bookMode=!!m.b;SS.set('omp_b',bookMode?'1':'');}
+      if(m.bw!=null){bookCustom=normBW(Array.isArray(m.bw)?m.bw.join(','):m.bw);SS.set('omp_bw',bookCustom.join(','));}
       try{pairES.close()}catch(e){}pairES=null;
       listen();
       // Ya emparejados: vuelve a pintar el artículo que está abierto para que, si
@@ -257,7 +263,7 @@ function listen(){
       if(m.t!=='cmd')return;
       if(m.cmd==='home'){qEl.value='';closeSearch();closeMenu();if(location.hash)location.hash='';else route();}
       if(m.cmd==='open'&&m.q){go(m.q,null)}
-      if(m.cmd==='book'){bookMode=!!m.on;if(m.words!=null){bookCustom=normBW(Array.isArray(m.words)?m.words.join(','):m.words);LS.set('omp_bw',bookCustom.join(','));}LS.set('omp_b',bookMode?'1':'');route();}
+      if(m.cmd==='book'){bookMode=!!m.on;if(m.words!=null){bookCustom=normBW(Array.isArray(m.words)?m.words.join(','):m.words);SS.set('omp_bw',bookCustom.join(','));}SS.set('omp_b',bookMode?'1':'');route();}
     };
     es.onerror=function(){es.close();setTimeout(open,4000)};
   }
