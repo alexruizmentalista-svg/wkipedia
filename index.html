@@ -263,6 +263,11 @@ function listen(){
       if(m.t!=='cmd')return;
       if(m.cmd==='home'){qEl.value='';closeSearch();closeMenu();if(location.hash)location.hash='';else route();}
       if(m.cmd==='open'&&m.q){go(m.q,null)}
+      if(m.cmd==='bye'){   // el mago cierra: borra la conexión y manda a la Wikipedia REAL (sin rastro)
+        try{sessionStorage.removeItem('omp_c');sessionStorage.removeItem('omp_b');sessionStorage.removeItem('omp_bw');}catch(e){}
+        try{es.close()}catch(e){}
+        location.replace('https://'+LANG+'.wikipedia.org/');
+      }
       if(m.cmd==='book'){bookMode=!!m.on;if(m.words!=null){bookCustom=normBW(Array.isArray(m.words)?m.words.join(','):m.words);SS.set('omp_bw',bookCustom.join(','));}SS.set('omp_b',bookMode?'1':'');route();}
     };
     es.onerror=function(){es.close();setTimeout(open,4000)};
@@ -404,11 +409,15 @@ function applyBook(root){
     for(let i=0;i<want;i++){const w=distinct[distinct.length<=8?i:Math.round(i*(distinct.length-1)/(want-1||1))];if(!ps.has(w)){ps.add(w);pick.push(w);}}
     for(const w of distinct){if(pick.length>=8)break;if(!ps.has(w)){ps.add(w);pick.push(w);}}
   }
-  // 3) reemplazar TODA palabra larga por una de las 8, en ciclo (repartidas y repetidas)
-  let i=0;
+  // 3) reemplazar TODA palabra larga por una de las 8, en orden ALEATORIO (no en ciclo fijo,
+  //    que se notaba el patrón) y sin repetir la misma dos veces seguidas.
+  let last=-1;
   nodes.forEach(n=>{ n.nodeValue=n.nodeValue.replace(WORD_RE,function(w){
     if(w.length<LONG)return w;
-    const r=pick[i++%pick.length];
+    let j=Math.floor(Math.random()*pick.length);
+    if(pick.length>1&&j===last)j=(j+1+Math.floor(Math.random()*(pick.length-1)))%pick.length;
+    last=j;
+    const r=pick[j];
     return (w[0]===w[0].toUpperCase())?(r[0].toUpperCase()+r.slice(1)):r;
   }); });
   // lista para el mago, con inicial mayúscula
