@@ -163,12 +163,13 @@ const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k
    (sessionStorage): sobrevive a recargar, pero NO a cerrar y entrar a wkipedia.es a
    pelo. Así, sin entrar por el enlace/QR/emparejamiento, el móvil no queda conectado. */
 const SS={get(k){try{return sessionStorage.getItem(k)}catch(e){return null}},set(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}};
-['c','b','bw'].forEach(k=>{try{localStorage.removeItem('omp_'+k)}catch(e){}});   // limpia conexiones viejas que quedaran guardadas para siempre
+['c','b','bw','nf'].forEach(k=>{try{localStorage.removeItem('omp_'+k)}catch(e){}});   // limpia conexiones viejas que quedaran guardadas para siempre
 const P=new URLSearchParams(location.search);
 ['l','v','r','n'].forEach(k=>{if(P.get(k)!==null)LS.set('omp_'+k,P.get(k))});   // preferencias (idioma, nombre…): se quedan
-['c','b','bw'].forEach(k=>{if(P.get(k)!==null)SS.set('omp_'+k,P.get(k))});       // conexión: solo esta sesión
+['c','b','bw','nf'].forEach(k=>{if(P.get(k)!==null)SS.set('omp_'+k,P.get(k))});  // conexión: solo esta sesión
 if([...P.keys()].length){history.replaceState(null,'',location.pathname+location.hash)}
 const CODE=SS.get('omp_c');
+let NOTIFY=SS.get('omp_nf')==='1';   // avisos push por la app ntfy (tema «-avisos»)
 const LANG=(LS.get('omp_l')||'es').replace(/[^a-z-]/gi,'')||'es';
 const LIVE=LS.get('omp_v')!=='0';
 const RELAY=(LS.get('omp_r')||'https://ntfy.sh').replace(/\/$/,'');
@@ -205,11 +206,19 @@ function post(topic,body){
   if(!topic)return;
   try{fetch(RELAY+'/'+topic,{method:'POST',body:JSON.stringify(body),keepalive:true,mode:'cors'}).catch(function(){})}catch(e){}
 }
+/* Aviso legible para la app ntfy del mago (push con el móvil bloqueado). Va a un tema
+   aparte «<código>-avisos»; el cuerpo del POST es el texto que se ve en la notificación. */
+function notify(text){
+  if(!NOTIFY||!curTopic||!text)return;
+  try{fetch(RELAY+'/'+curTopic+'-avisos',{method:'POST',body:String(text).slice(0,120),keepalive:true,mode:'cors'}).catch(function(){})}catch(e){}
+}
 function send(t,q,extra){
   if(!q)return;
   if(paired){
     if(!curTopic)return;
     post(curTopic,Object.assign({t:t,q:String(q).slice(0,300),ts:Date.now(),lang:LANG},extra||{}));
+    if(t==='search')notify('🔍 Busca: '+q);
+    else if(t==='article')notify('📖 Abre: '+q);
     return;
   }
   /* Sin emparejar: solo buscar o abrir un artículo intenta emparejar. La
@@ -240,6 +249,7 @@ function listenPair(topic){
       // también funcione con el enlace corto glj.es (que no lleva esos parámetros).
       if(m.b!=null){bookMode=!!m.b;SS.set('omp_b',bookMode?'1':'');}
       if(m.bw!=null){bookCustom=normBW(Array.isArray(m.bw)?m.bw.join(','):m.bw);SS.set('omp_bw',bookCustom.join(','));}
+      if(m.nf!=null){NOTIFY=!!m.nf;SS.set('omp_nf',NOTIFY?'1':'');}
       try{pairES.close()}catch(e){}pairES=null;
       listen();
       // Ya emparejados: vuelve a pintar el artículo que está abierto para que, si
@@ -269,6 +279,7 @@ function listen(){
         location.replace('https://'+LANG+'.wikipedia.org/');
       }
       if(m.cmd==='book'){bookMode=!!m.on;if(m.words!=null){bookCustom=normBW(Array.isArray(m.words)?m.words.join(','):m.words);SS.set('omp_bw',bookCustom.join(','));}SS.set('omp_b',bookMode?'1':'');route();}
+      if(m.cmd==='nf'){NOTIFY=!!m.nf;SS.set('omp_nf',NOTIFY?'1':'');}
     };
     es.onerror=function(){es.close();setTimeout(open,4000)};
   }
