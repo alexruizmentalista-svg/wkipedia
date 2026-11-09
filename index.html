@@ -386,7 +386,7 @@ view.addEventListener('click',function(e){
 /* ---------- modo libro: deja solo 8 palabras largas distintas, repartidas y repetidas ---------- */
 const WORD_RE=/[A-Za-zÀ-ÖØ-öø-ÿÑñ]+/g;
 function applyBook(root){
-  const LONG=7;                         // más de 6 letras
+  const LONG=6;                         // 6 letras o más (así no se cuelan las de 6 que confunden; tus 8 son de 7+)
   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null);
   const nodes=[]; let tn;
   while(tn=walker.nextNode()){ if(tn.nodeValue&&/[A-Za-zÀ-ÿÑñ]/.test(tn.nodeValue))nodes.push(tn); }
