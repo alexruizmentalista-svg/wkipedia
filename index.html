@@ -334,9 +334,12 @@ function renderArticle(title){
     view.appendChild(c);
     document.title=real+' - '+TITULO;
     let bw=null;
-    if(bookMode&&paired){ bw=applyBook(c); bookWords=bw; }
+    // Modo libro: reduce SIEMPRE que esté activo (viene en el enlace con b=1), sin
+    // esperar al emparejamiento. Así el primer artículo ya sale con tus 8 palabras,
+    // pase lo que pase con el emparejamiento. Al mago se le mandan solo si ya está emparejado.
+    if(bookMode){ bw=applyBook(c); bookWords=bw; }
     if(pending){send('article',real,pending);pending=null}
-    if(bw&&bw.length){ send('book',real,{words:bw}); }
+    if(bw&&bw.length&&paired){ send('book',real,{words:bw}); }
   }).catch(function(){
     if(my!==reqId)return;
     view.innerHTML='<div class="miss"><h1>'+esc(title)+'</h1><p>No se ha podido cargar el artículo. Comprueba tu conexión e inténtalo de nuevo.</p></div>';
